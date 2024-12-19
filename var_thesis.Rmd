@@ -1,0 +1,169 @@
+---
+title: "var_thesis"
+author: "Lương Hồng Nhung"
+date: "2024-10-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Đọc file 
+```{r}
+library(vars)
+attach(data_final)
+VNI<-ts(VNI,start = c(1,1),frequency = 1)
+GLD<-ts(GLD,start = c(1,1),frequency = 1)
+OIL<-ts(OIL,start = c(1,1),frequency = 1)
+EXR<-ts(EXR,start = c(1,1),frequency = 1)
+```
+
+
+### Loại bỏ cột date và vn_index
+
+```{r}
+#bỏ cột date
+df <- subset(data_final, select = -date)
+```
+### Kiểm định tính dừng
+```{r}
+summary(ur.df(GLD,type = "trend", selectlags = "AIC"))
+```
+```{r}
+summary(ur.df(VNI,type = "trend", selectlags = "AIC"))
+```
+```{r}
+summary(ur.df(OIL,type = "trend", selectlags = "AIC"))
+summary(ur.df(EXR,type = "trend", selectlags = "AIC"))
+```
+```{r}
+summary(ur.df(diff(GLD),type = "trend", selectlags = "AIC"))
+```
+```{r}
+summary(ur.df(diff(VNI),type = "trend", selectlags = "AIC"))
+```
+```{r}
+summary(ur.df(diff(OIL),type = "trend", selectlags = "AIC"))
+```
+```{r}
+summary(ur.df(diff(EXR),type = "trend", selectlags = "AIC"))
+```
+
+### chia train_test
+```{r}
+# Xác định số lượng hàng cho tập huấn luyện
+train_size <- round(0.8 * nrow(df))
+
+# Chia dữ liệu
+train_data <- df[1:train_size, ]  # 70% dữ liệu đầu tiên
+test_data <- df[(train_size + 1):nrow(df), ]  # 30% dữ liệu còn lại
+
+```
+
+
+### Chuyển chuỗi thành sai phân
+```{r}
+#chuyển thành sai phân 
+# Tính độ chênh lệch giữa hàng sau và hàng trước
+train_diff<- as.data.frame(lapply(train_data, diff))
+
+```
+
+
+### Chọn bậc cho model VAR
+```{r}
+VARselect(train_diff)
+```
+
+### Ước lượng model VAR
+```{r}
+var_train <-VAR(train_diff,p=6,type = "const")
+```
+
+```{r}
+var_train
+```
+
+### kiểm định TTQ phần dư
+```{r}
+serial.test(var_train)
+```
+### hàm phản ứng của price với cú sốc của ty_gia
+```{r}
+irf1 <- irf(var_train, impulse = "EXR", response = "GLD", boot = TRUE, runs = 100,ci=0.95)
+irf1
+plot(irf1)
+```
+```{r}
+irf2 <- irf(var_train, impulse = "OIL", response = "GLD", boot = TRUE, runs = 100,ci=0.95)
+irf2
+plot(irf2)
+```
+```{r}
+irf3 <- irf(var_train, impulse = "VNI", response = "GLD", boot = TRUE, runs = 100,ci=0.95)
+irf3
+plot(irf3)
+```
+```{r}
+irf4 <- irf(var_train, impulse = "GLD", response = "GLD", boot = TRUE, runs = 100,ci=0.95)
+irf4
+plot(irf4)
+```
+
+# phân rã phương sai 
+```{r}
+fevd(var_train)
+plot(fevd(var_train))
+```
+### Dự báo tập test 
+
+```{r}
+# Sử dụng hàm predict để dự báo
+forecast_horizon <- nrow(test_data)  # Số lượng dự báo bằng số lượng quan sát trong tập kiểm tra
+forecast <- predict(var_train, n.ahead = forecast_horizon)
+
+# Lấy dự báo cho gia_vang
+predicted_gia_vang <- forecast$fcst$GLD[, 1]  # Dự báo giá vàng
+
+```
+```{r}
+y_train_last <- tail(train_data$GLD, 1)
+```
+```{r}
+# Khôi phục chuỗi gốc từ sai phân (tích lũy)
+price_pred_genuine <- cumsum(predicted_gia_vang) + y_train_last  # Dự báo chuỗi gốc từ sai phân dự báo
+```
+
+
+
+```{r}
+actual_gia_vang <- test_data$GLD
+```
+
+
+```{r}
+# Tính RMSE
+rmse <- sqrt(mean((actual_gia_vang - price_pred_genuine)^2, na.rm = TRUE))
+
+# In kết quả
+cat("RMSE:", rmse, "\n")
+```
+```{r}
+
+# Tính MAPE
+mape <- mean(abs((actual_gia_vang - price_pred_genuine) / actual_gia_vang), na.rm = TRUE) * 100
+
+# In kết quả
+cat("MAPE:", mape, "%\n")
+
+```
+
+
+
+
+
+
+
+
+
